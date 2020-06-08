@@ -45,6 +45,24 @@ module ShopifyCli
             output
           end
         end
+
+        def parse_external_env(directory = Dir.pwd)
+          env_details = {}
+          extra = {}
+          begin
+            parse(directory).each do |key, value|
+              if KEY_MAP[key]
+                env_details[KEY_MAP[key]] = value
+              else
+                extra[key] = value
+              end
+            end
+            env_details[:extra] = extra
+          rescue Errno::ENOENT
+            # there is no .env file
+          end
+          env_details
+        end
       end
 
       property :api_key, required: true

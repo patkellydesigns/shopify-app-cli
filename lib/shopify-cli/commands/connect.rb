@@ -4,16 +4,30 @@ module ShopifyCli
   module Commands
     class Connect < ShopifyCli::Command
       def call(*)
-        if Project.current
-          @ctx.puts @ctx.message('core.connect.production_warning')
-          org = fetch_org
-          id = org['id']
-          app = get_app(org['apps'])
-          shop = get_shop(org['stores'], id)
-          write_env(app, shop)
-          @ctx.puts(@ctx.message('core.connect.connected', app.first['title']))
-          @ctx.puts(@ctx.message('core.connect.serve', ShopifyCli::TOOL_NAME))
+        project_type = ask_project_type unless Project.has_current?
+
+        @ctx.puts @ctx.message('core.connect.production_warning') if Project.has_current? && Project.current
+
+        env_file = Resources::EnvFile.parse_external_env
+        org = fetch_org
+        id = org['id']
+        app = get_app(org['apps'])
+        shop = get_shop(org['stores'], id)
+
+        write_env(app, shop, env_file[:scopes], env_file[:extra])
+        write_cli_yml(project_type, id) unless Project.has_current?
+
+        @ctx.puts(@ctx.message('core.connect.connected', app.first['title']))
+        @ctx.puts(@ctx.message('core.connect.serve', ShopifyCli::TOOL_NAME))
+      end
+
+      def ask_project_type
+        type_name = CLI::UI::Prompt.ask(@ctx.message("core.connect.project_type_select")) do |handler|
+          ShopifyCli::Commands::Create.all_visible_type.each do |type|
+            handler.option(type.project_name) { type.project_type }
+          end
         end
+        type_name
       end
 
       def fetch_org
@@ -53,13 +67,25 @@ module ShopifyCli
         shop
       end
 
-      def write_env(app, shop)
+      def write_env(app, shop, scopes, extra)
+        scopes = 'write_products,write_customers,write_draft_orders' if scopes.nil?
+        extra = {} if extra.nil?
+
         Resources::EnvFile.new(
           api_key: app.first["apiKey"],
           secret: app.first["apiSecretKeys"].first["secret"],
           shop: shop,
-          scopes: 'write_products,write_customers,write_draft_orders',
+          scopes: scopes,
+          extra: extra,
         ).write(@ctx)
+      end
+
+      def write_cli_yml(project_type, org_id)
+        ShopifyCli::Project.write(
+          @ctx,
+          project_type: project_type,
+          organization_id: org_id,
+        )
       end
 
       def self.help
