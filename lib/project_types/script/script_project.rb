@@ -11,6 +11,11 @@ module Script
       @extension_point_type = lookup_config('extension_point_type')
       @script_name = lookup_config('script_name')
       @language = 'ts'
+      ShopifyCli::Core::Monorail.metadata = {
+        "script_name" => @script_name,
+        "extension_point_type" => @extension_point_type,
+        "language" => @language,
+      }
     end
 
     private

@@ -99,7 +99,7 @@ module ShopifyCli
 
               if Project.has_current?
                 project = Project.current
-                payload[:api_key] = project.env.api_key
+                payload[:api_key] = project.env.api_key unless Project.current_project_type.to_s == 'script'
                 payload[:partner_id] = project.config['organization_id']
               end
             end,
