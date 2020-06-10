@@ -38,7 +38,8 @@ module ShopifyCli
       #   ShopifyCli::AdminAPI.query(@ctx, 'all_organizations')
       #
       def query(ctx, query_name, api_version: nil, shop: nil, **variables)
-        shop ||= Project.current.env.shop
+        shop ||= Project.current.env.shop || get_shop(ctx)
+
         authenticated_req(ctx, shop) do
           api_client(ctx, api_version, shop).query(query_name, variables: variables)
         end
@@ -93,6 +94,43 @@ module ShopifyCli
         versions = client.query('api_versions')['data']['publicApiVersions']
         latest = versions.find { |version| version['displayName'].include?('Latest') }
         latest['handle']
+      end
+
+      def get_shop(ctx)
+        organizations ||= ShopifyCli::PartnersAPI::Organizations.fetch_all(ctx)
+        if organizations.count == 0
+          ctx.puts(ctx.message('rails.forms.create.partners_notice'))
+          ctx.puts(ctx.message('rails.forms.create.authentication_issue', ShopifyCli::TOOL_NAME))
+          ctx.abort(ctx.message('rails.forms.create.error.no_organizations'))
+        elsif organizations.count == 1
+          ctx.puts(ctx.message('rails.forms.create.organization', organizations.first['businessName']))
+          organization = organizations.first
+        else
+          org_id = CLI::UI::Prompt.ask(ctx.message('rails.forms.create.organization_select')) do |handler|
+            organizations.each { |o| handler.option(o['businessName']) { o['id'] } }
+          end
+          organization = organizations.find { |o| o['id'] == org_id }
+        end
+
+        valid_stores = organization['stores'].select do |store|
+          store['transferDisabled'] == true || store['convertableToPartnerTest'] == true
+        end
+
+        if valid_stores.count == 0
+          ctx.puts(ctx.message('rails.forms.create.no_development_stores'))
+          ctx.puts(ctx.message('rails.forms.create.create_store', organization['id']))
+          ctx.puts(ctx.message('rails.forms.create.authentication_issue', ShopifyCli::TOOL_NAME))
+        elsif valid_stores.count == 1
+          domain = valid_stores.first['shopDomain']
+          ctx.puts(ctx.message('rails.forms.create.development_store', domain))
+        else
+          domain = CLI::UI::Prompt.ask(
+            ctx.message('rails.forms.create.development_store_select'),
+            options: valid_stores.map { |s| s['shopDomain'] }
+          )
+        end
+        Project.current.env.update(ctx, :shop, domain)
+        domain
       end
     end
   end
